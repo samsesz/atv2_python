@@ -4,6 +4,7 @@ from tkinter import *
 from PIL import Image, ImageTk
 import pymongo
 import tkinter as tk
+from tkinter import messagebox
 
 # Função para escolher imagem
 def escolher_imagem():
@@ -15,7 +16,6 @@ def escolher_imagem():
     )
     if not caminho_imagem:
         return
-    pasta_inicial = caminho_imagem.rsplit("/", 1)[0]
     try:
         imagem_pil = Image.open(caminho_imagem)
         largura, altura = imagem_pil.size
@@ -32,14 +32,19 @@ def escolher_imagem():
 # Configuração da tela 
 tela = Tk()
 tela.title("Sistema Pessoas")
-tela.geometry("950x500")  
+tela.geometry("950x500")
 tela.configure(background="#F4F4F9")
 
-# IMAGEM p_pessoa.png 
-img_pessoa_original = PhotoImage(file="icones/p_pessoa.png")
-img_pessoa = img_pessoa_original.subsample(3, 3)
-lbl_pessoa_icon = Label(tela, image=img_pessoa, bg="#F4F4F9")
-lbl_pessoa_icon.place(x=5, y=5)
+# IMAGEM p_pessoa.png reduzida no cantinho
+try:
+    img_pessoa_original = PhotoImage(file="icones/p_pessoa.png")
+    img_pessoa = img_pessoa_original.subsample(3, 3)
+    lbl_pessoa_icon = Label(tela, image=img_pessoa, bg="#F4F4F9")
+    lbl_pessoa_icon.place(x=5, y=5)
+except Exception:
+    # se não achar a imagem, ignora
+    lbl_pessoa_icon = Label(tela, bg="#F4F4F9")
+    lbl_pessoa_icon.place(x=5, y=5)
 
 # Área onde a imagem selecionada aparece
 lbl_imagem = Label(tela, background="#F4F4F9")
@@ -65,7 +70,7 @@ Label(tela, text="Nome:", bg="#F4F4F9", font=("Cambria", 12)).place(x=160, y=100
 campo_nome = Entry(tela, width=30, bg="white", fg="#0E0E0E", borderwidth=5)
 campo_nome.place(x=240, y=100)
 
-# Data de nascimento
+# Nascimento
 Label(tela, text="Nascimento:", bg="#F4F4F9", font=("Cambria", 12)).place(x=550, y=100)
 campo_nasc = Entry(tela, width=30, bg="#FFF", fg="#333", borderwidth=4)
 campo_nasc.place(x=680, y=100)
@@ -107,9 +112,12 @@ seleciona_cidade.place(x=240, y=250)
 info_pessoa = Label(tela, text="", font=("Cambria", 12), fg="#333")
 info_pessoa.place(x=70, y=380)
 
+lbl_mensagem = Label(tela, text="", bg="#fff")
+lbl_mensagem.place(x=490, y=410)
+
 # ------------------ Funções ------------------ #
 
-def limpar_campos():
+def limpar_campos_pessoa():
     campo_id.delete(0, tk.END)
     campo_nome.delete(0, tk.END)
     campo_nasc.delete(0, tk.END)
@@ -119,25 +127,40 @@ def limpar_campos():
     campo_peso.delete(0, tk.END)
     seleciona_cidade.set("")
 
-def salvar():
+def salvar_pessoa():
+    # valida idade
+    idade_val = 0
+    idade_text = campo_idade.get().strip()
+    if idade_text:
+        try:
+            idade_val = int(idade_text)
+        except ValueError:
+            messagebox.showerror("Erro", "Idade inválida. Informe um número.")
+            return
+
     dados = {
-        "id": campo_id.get(),
-        "nome": campo_nome.get(),
-        "nasc": campo_nasc.get(),
-        "idade": int(campo_idade.get()),
-        "telefone": campo_tel.get(),
-        "altura": campo_altura.get(),
-        "peso": campo_peso.get(),
+        "id": campo_id.get().strip(),
+        "nome": campo_nome.get().strip(),
+        "nasc": campo_nasc.get().strip(),
+        "idade": idade_val,
+        "telefone": campo_tel.get().strip(),
+        "altura": campo_altura.get().strip(),
+        "peso": campo_peso.get().strip(),
         "cidade": seleciona_cidade.get()
     }
 
+    if not dados["id"]:
+        messagebox.showwarning("Atenção", "Preencha o ID antes de salvar.")
+        return
+
     collection.insert_one(dados)
+    lbl_mensagem.config(text="Registro salvo com sucesso.", fg="green")
 
     info_pessoa.config(text=(
         f"Dados da Pessoa:\n"
         f"ID: {dados['id']}\n"
         f"Nome: {dados['nome']}\n"
-        f"Nascimento: {dados['nasc']}\n"
+        f"Data de Nascimento: {dados['nasc']}\n"
         f"Idade: {dados['idade']}\n"
         f"Telefone: {dados['telefone']}\n"
         f"Altura: {dados['altura']}\n"
@@ -145,48 +168,85 @@ def salvar():
         f"Cidade: {dados['cidade']}"
     ))
 
-    limpar_campos()
+    limpar_campos_pessoa()
 
-def atualizar():
-    id_busca = campo_id.get()
+def consultar_pessoa():
+    if not campo_id.get().strip():
+        messagebox.showwarning("Atenção", "Informe o ID para consultar.")
+        return
+    registro = collection.find_one({"id": campo_id.get().strip()})
+    if registro:
+        # limpa antes de inserir
+        limpar_campos_pessoa()
+        campo_id.insert(0, registro.get("id", ""))
+        campo_nome.insert(0, registro.get("nome", ""))
+        campo_nasc.insert(0, registro.get("nasc", ""))
+        campo_idade.insert(0, str(registro.get("idade", "")))
+        campo_tel.insert(0, registro.get("telefone", ""))
+        campo_altura.insert(0, registro.get("altura", ""))
+        campo_peso.insert(0, registro.get("peso", ""))
+        seleciona_cidade.set(registro.get("cidade", ""))
+        lbl_mensagem.config(text="Registro encontrado.", fg="green")
+    else:
+        lbl_mensagem.config(text="Registro não encontrado.", fg="red")
+
+def atualizar_pessoa():
+    id_busca = campo_id.get().strip()
+    if not id_busca:
+        messagebox.showwarning("Atenção", "Informe o ID para alterar.")
+        return
+
+    registro = collection.find_one({"id": id_busca})
+    if not registro:
+        messagebox.showerror("Erro", "Registro não encontrado para atualizar.")
+        return
+
+    # valida idade
+    idade_val = 0
+    idade_text = campo_idade.get().strip()
+    if idade_text:
+        try:
+            idade_val = int(idade_text)
+        except ValueError:
+            messagebox.showerror("Erro", "Idade inválida. Informe um número.")
+            return
 
     novos_valores = {
-        "nome": campo_nome.get(),
-        "nasc": campo_nasc.get(),
-        "idade": int(campo_idade.get() or 0),
-        "telefone": campo_tel.get(),
-        "altura": campo_altura.get(),
-        "peso": campo_peso.get(),
+        "nome": campo_nome.get().strip(),
+        "nasc": campo_nasc.get().strip(),
+        "idade": idade_val,
+        "telefone": campo_tel.get().strip(),
+        "altura": campo_altura.get().strip(),
+        "peso": campo_peso.get().strip(),
         "cidade": seleciona_cidade.get()
     }
 
     collection.update_one({"id": id_busca}, {"$set": novos_valores})
-    limpar_campos()
+    lbl_mensagem.config(text="Atualizado com sucesso.", fg="green")
+     # limpa informação mostrada
+    info_pessoa.config(text="")
+    limpar_campos_pessoa()
 
-def excluir():
-    id_remove = campo_id.get()
-    collection.delete_one({"id": id_remove})
-    limpar_campos()
+def excluir_pessoa():
+    id_remove = campo_id.get().strip()
+    if not id_remove:
+        messagebox.showwarning("Atenção", "Informe o ID para excluir.")
+        return
 
-def consultar():
-    registro = collection.find_one({"id": campo_id.get()})
+    registro = collection.find_one({"id": id_remove})
+    if not registro:
+        messagebox.showerror("Erro", "Registro não encontrado para excluir.")
+        return
 
-    if registro:
-        campo_nome.insert(0, registro["nome"])
-        campo_nasc.insert(0, registro["nasc"])
-        campo_idade.insert(0, registro["idade"])
-        campo_tel.insert(0, registro["telefone"])
-        campo_altura.insert(0, registro["altura"])
-        campo_peso.insert(0, registro["peso"])
-        seleciona_cidade.set(registro["cidade"])
-        lbl_mensagem.config(text="", fg="green")
-    else:
-        lbl_mensagem.config(text="Registro não encontrado.", fg="red")
+    confirma = messagebox.askyesno("Confirmar", f"Excluir registro ID {id_remove}?")
+    if confirma:
+        collection.delete_one({"id": id_remove})
+        lbl_mensagem.config(text="Registro excluído.", fg="green")
+        info_pessoa.config(text="")
+        
+        limpar_campos_pessoa()
 
-lbl_mensagem = Label(tela, text="", bg="#fff")
-lbl_mensagem.place(x=490, y=410)
-
-# ------- Botões com Imagens ------- #
+# ------- BOTÕES ------- #
 
 foto_salvar = PhotoImage(file="icones/salvar.png")
 foto_excluir = PhotoImage(file="icones/excluir.png")
@@ -194,10 +254,10 @@ foto_alterar = PhotoImage(file="icones/alterar.png")
 foto_consultar = PhotoImage(file="icones/consultar.png")
 foto_sair = PhotoImage(file="icones/sair.png")
 
-Button(tela, image=foto_salvar, command=salvar).place(x=240, y=310)
-Button(tela, image=foto_excluir, command=excluir).place(x=320, y=310)
-Button(tela, image=foto_alterar, command=atualizar).place(x=400, y=310)
-Button(tela, image=foto_consultar, command=consultar).place(x=480, y=310)
+Button(tela, image=foto_salvar, command=salvar_pessoa).place(x=240, y=310)
+Button(tela, image=foto_excluir, command=excluir_pessoa).place(x=320, y=310)
+Button(tela, image=foto_alterar, command=atualizar_pessoa).place(x=400, y=310)
+Button(tela, image=foto_consultar, command=consultar_pessoa).place(x=480, y=310)
 Button(tela, image=foto_sair, command=tela.quit).place(x=560, y=310)
 
 # Textos abaixo dos botões
